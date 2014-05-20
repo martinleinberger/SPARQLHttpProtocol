@@ -7,15 +7,18 @@ open FSharp.Data
 open FSharp.Data.JsonExtensions
 open FSharp.Data.HttpRequestHeaders
 
-type ResultType = 
+type Prefix =
+    string * string
+
+type ValueType = 
     | URI
     | LITERAL
 
 type QueryResult = 
     { Value : string
-      Type : ResultType }
+      Type : ValueType }
 
-let internal parseJsonSelect response = 
+let internal parseJsonSelect plainResponse = 
     // Not sure why this isn't offered on JSON Values
     let asString = JsonExtensions.AsString
     let asArray = JsonExtensions.AsArray
@@ -26,8 +29,8 @@ let internal parseJsonSelect response =
         | "literal" -> LITERAL
         | _ -> failwith "Unexpected result type"
     
-    let response' = JsonValue.Parse(response)
-    asArray (response'?results?bindings) 
+    let response = JsonValue.Parse(plainResponse)
+    asArray (response?results?bindings) 
     |> Seq.map 
            (fun binding -> 
            binding.Properties 
@@ -36,13 +39,12 @@ let internal parseJsonSelect response =
                                   { Value = (asString boundValue?value)
                                     Type = extractResultType boundValue })) Map.empty<string, QueryResult>)
 
-type Endpoint(selectEndpoint : string, ?updateUrl : string) = 
+type SPARQLHttpEndpoint(selectEndpoint : string, ?updateUrl : string) = 
     class
-        // I dislike this part here >>>
         let mutable prefixes = []
-        member __.AddPrefix(p : string * string) = prefixes <- p :: prefixes
-        member __.AddPrefixes(l : (string * string) list) = prefixes <- l @ prefixes
-        // <<<
+        member __.AddPrefix(prefix : Prefix) = prefixes <- prefix :: prefixes
+        member __.Prefixes = prefixes
+        
         member __.Query(sparql_select) = 
             let queryPrefixes = 
                 prefixes
@@ -54,9 +56,13 @@ type Endpoint(selectEndpoint : string, ?updateUrl : string) =
                 (url = selectEndpoint, httpMethod = "GET", query = [ ("query", sparql_select) ], 
                  headers = [ Accept HttpContentTypes.Json ]) |> parseJsonSelect
         
-        member __.Update(sparql_update) =
-            // Still todo
-            ()
+        member __.Update(sparql_update) = 
+            if updateUrl.IsNone then failwith "You need to specify a URL that accepts update
+                    queries (in the constructor) before you can actually execute them"
+            Http.RequestString
+                (url = updateUrl.Value, httpMethod = "POST", query = [], 
+                 headers = [ Accept HttpContentTypes.Json ]) |> printfn "%A"
+        
         member __.IsWritable = 
             // Something more clever needed
             updateUrl.IsSome
