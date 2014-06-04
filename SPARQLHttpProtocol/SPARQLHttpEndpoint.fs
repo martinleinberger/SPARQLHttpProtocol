@@ -36,7 +36,7 @@ type Uri = string
 type Literal = string
 
 type PatterElement = 
-    | Var of Variable
+    | Var of string
     | Uri of Uri
     | Literal of Literal
     override this.ToString() = 
@@ -123,9 +123,11 @@ type SPARQLHttpEndpoint(selectEndpoint : string, ?updateUrl : string) =
         /// </summary>
         /// <param name="sparql_select">The record describing the select query</param>
         member __.Query sparql_select = 
-            let sparql_select' = convertPrefixes + "\n" + sparql_select
+            let sparql_select' = (convertPrefixes + "\n" + sparql_select).Replace(" ", "+")//.Replace("<", "%3a").Replace(">", "%3e")
+            
+            let complete = selectEndpoint + "?query=" + sparql_select'
             Http.RequestString
-                (url = selectEndpoint, httpMethod = "GET", query = [ ("query", sparql_select) ], 
+                (url = selectEndpoint, httpMethod = "GET", query = [ ("query", sparql_select') ], 
                  headers = [ Accept HttpContentTypes.Json ]) |> parseJsonSelect
         
         member __.Update(sparql_update) = 
